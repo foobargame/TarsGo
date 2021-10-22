@@ -38,10 +38,18 @@ var (
 	asyncDone, asyncCancel = context.WithCancel(context.Background())
 )
 
+// Hook defines an interface to a log hook.
+type Hook interface {
+	// Run runs the hook with the event.
+	Before(level LogLevel, message string) map[string]interface{}
+	After(level LogLevel, message string)
+}
+
 // Logger is the struct with name and wirter.
 type Logger struct {
 	name   string
 	writer LogWriter
+	hook   Hook
 }
 
 // LogLevel is uint8 type
@@ -271,7 +279,21 @@ func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{
 		}
 		buf.WriteByte('|')
 	}
-
+	if l.hook != nil {
+		fields := l.hook.Before(level, "")
+		if len(fields) > 0 {
+			buf.WriteByte('{')
+		}
+		for k, v := range fields {
+			buf.WriteString(k)
+			buf.WriteByte('=')
+			buf.WriteString(fmt.Sprintf("%v,", v))
+		}
+		if len(fields) > 0 {
+			buf.WriteByte('}')
+			buf.WriteByte('|')
+		}
+	}
 	if format == "" {
 		fmt.Fprint(buf, v...)
 	} else {
@@ -280,7 +302,15 @@ func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{
 	if l.writer.NeedPrefix() {
 		buf.WriteByte('\n')
 	}
-	logQueue <- &logValue{value: buf.Bytes(), writer: l.writer}
+	finalBytes := buf.Bytes()
+	if l.hook != nil {
+		l.hook.After(logLevel, string(finalBytes))
+	}
+	logQueue <- &logValue{value: finalBytes, writer: l.writer}
+}
+
+func (l *Logger) SetHook(hook Hook) {
+	l.hook = hook
 }
 
 func getFuncName(name string) string {
