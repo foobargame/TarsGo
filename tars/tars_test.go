@@ -9,9 +9,9 @@ import (
 type hook struct {
 }
 
-func (m hook) Before(level rogger.LogLevel, message string) map[string]interface{} {
-	return map[string]interface{}{
-		"a": 1,
+func (m hook) Before(level rogger.LogLevel) map[string]string {
+	return map[string]string{
+		"a": "1",
 		"B": "bbbb",
 	}
 }

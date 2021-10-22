@@ -41,7 +41,7 @@ var (
 // Hook defines an interface to a log hook.
 type Hook interface {
 	// Run runs the hook with the event.
-	Before(level LogLevel, message string) map[string]interface{}
+	Before(level LogLevel) map[string]string
 	After(level LogLevel, message string)
 }
 
@@ -260,7 +260,7 @@ func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{
 
 	buf := bytes.NewBuffer(nil)
 	if l.writer.NeedPrefix() {
-		fmt.Fprintf(buf, "%s|", time.Now().Format("2006-01-02 15:04:05.000"))
+		fmt.Fprintf(buf, "%s", time.Now().Format("2006-01-02 15:04:05.000"))
 
 		if callerFlag {
 			pc, file, line, ok := runtime.Caller(depth + callerSkip)
@@ -270,7 +270,7 @@ func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{
 			} else {
 				file = filepath.Base(file)
 			}
-			fmt.Fprintf(buf, "%s:%s:%d|", file, getFuncName(runtime.FuncForPC(pc).Name()), line)
+			fmt.Fprintf(buf, " %s:%d:%s|", file, line, getFuncName(runtime.FuncForPC(pc).Name()))
 		}
 		if colored && l.IsConsoleWriter() {
 			buf.WriteString(level.coloredString())
@@ -280,19 +280,13 @@ func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{
 		buf.WriteByte('|')
 	}
 	if l.hook != nil {
-		fields := l.hook.Before(level, "")
-		if len(fields) > 0 {
-			buf.WriteByte('{')
+		fields := l.hook.Before(level)
+		pair := make([]string, 0, len(fields))
+		for key, value := range fields {
+			pair = append(pair, key+"="+value)
 		}
-		for k, v := range fields {
-			buf.WriteString(k)
-			buf.WriteByte('=')
-			buf.WriteString(fmt.Sprintf("%v,", v))
-		}
-		if len(fields) > 0 {
-			buf.WriteByte('}')
-			buf.WriteByte('|')
-		}
+		buf.WriteString(strings.Join(pair, ","))
+		buf.WriteByte('|')
 	}
 	if format == "" {
 		fmt.Fprint(buf, v...)
