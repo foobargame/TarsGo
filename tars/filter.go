@@ -69,6 +69,11 @@ func UseClientFilterMiddleware(cfm ...ClientFilterMiddleware) {
 	allFilters.cfms = append(allFilters.cfms, cfm...)
 }
 
+// GetDispatchReporter returns the dispatch reporter
+func GetDispatchReporter() DispatchReporter {
+	return dispatchReporter
+}
+
 func getMiddlewareClientFilter() ClientFilter {
 	if len(allFilters.cfms) <= 0 {
 		return nil
