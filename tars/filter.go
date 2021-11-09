@@ -20,9 +20,18 @@ type filters struct {
 }
 
 var allFilters = filters{nil, nil, nil, nil, nil, nil, nil, nil}
+var dispatchReporter DispatchReporter
 
 // Invoke is used for Invoke tars server service
 type Invoke func(ctx context.Context, msg *Message, timeout time.Duration) (err error)
+
+// DispatchReporter is the reporter in server-side dispatch, and will be used in logging
+type DispatchReporter func(ctx context.Context, req []interface{}, rsp []interface{}, returns []interface{})
+
+// RegisterDispatchReporter registers the server dispatch reporter
+func RegisterDispatchReporter(f DispatchReporter) {
+	dispatchReporter = f
+}
 
 // RegisterClientFilter  registers the Client filter , and will be executed in every request.
 func RegisterClientFilter(f ClientFilter) {
