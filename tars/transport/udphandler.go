@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -99,4 +100,30 @@ func (h *udpHandler) CloseIdles(n int64) bool {
 		return true
 	}
 	return false
+}
+
+func (h *udpHandler) SendData(ctx context.Context, data []byte) error {
+
+	clientIp, ok := current.GetClientIPFromContext(ctx)
+	if !ok {
+		return errors.New("can't get client IP")
+	}
+	clientPort, ok := current.GetClientPortFromContext(ctx)
+	if !ok {
+		return errors.New("can't get Cient port")
+	}
+
+	addrStr := clientIp + ":" + clientPort
+	udpAddr, err := net.ResolveUDPAddr("udp4", addrStr)
+	if err != nil {
+		return errors.New("udpaddr error:" + err.Error())
+	}
+
+	if _, err := h.conn.WriteToUDP(data, udpAddr); err != nil {
+		TLOG.Errorf("send pkg to %v failed %v", udpAddr, err)
+	}
+
+	TLOG.Infof("send data to %v", udpAddr)
+
+	return nil
 }

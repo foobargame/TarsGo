@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -39,6 +40,7 @@ type connInfo struct {
 	idleTime  int64
 	numInvoke int32
 	writeLock sync.Mutex
+	fd        uintptr
 }
 
 func (h *tcpHandler) Listen() (err error) {
@@ -65,6 +67,10 @@ func (h *tcpHandler) getConnContext(connSt *connInfo) context.Context {
 	current.SetClientIPWithContext(ctx, ipPort[0])
 	current.SetClientPortWithContext(ctx, ipPort[1])
 	current.SetRecvPkgTsFromContext(ctx, time.Now().UnixNano()/1e6)
+	current.SetHandleWithContext(ctx, h.ts.handle)
+	current.SetClientFdWithContext(ctx, connSt.fd)
+
+	TLOG.Infof("client fd: %v remote:%v", connSt.fd, connSt.conn.RemoteAddr().String())
 
 	return ctx
 }
@@ -123,13 +129,15 @@ func (h *tcpHandler) Handle() error {
 		atomic.AddInt32(&h.ts.numConn, 1)
 		go func(conn *net.TCPConn) {
 			fd, _ := conn.File()
+			defer fd.Close()
+
 			key := fmt.Sprintf("%v", fd.Fd())
 			TLOG.Debugf("TCP accept: %s, %d, fd: %s", conn.RemoteAddr(), os.Getpid(), key)
 			conn.SetReadBuffer(cfg.TCPReadBuffer)
 			conn.SetWriteBuffer(cfg.TCPWriteBuffer)
 			conn.SetNoDelay(cfg.TCPNoDelay)
 
-			cf := &connInfo{conn: conn}
+			cf := &connInfo{conn: conn, fd: fd.Fd()}
 			h.conns.Store(key, cf)
 			h.recv(cf)
 			h.conns.Delete(key)
@@ -267,4 +275,30 @@ func (h *tcpHandler) recv(connSt *connInfo) {
 			return
 		}
 	}
+}
+
+func (h *tcpHandler) SendData(ctx context.Context, data []byte) error {
+
+	fd, ok := current.GetClientFdWithContext(ctx)
+	if !ok {
+		return errors.New("can't get fd")
+	}
+
+	key := fmt.Sprintf("%v", fd)
+	val, ok := h.conns.Load(key)
+	if !ok {
+		return errors.New("can't get conninfo for" + key)
+	}
+
+	connSt := val.(*connInfo)
+	connSt.writeLock.Lock()
+	_, err := connSt.conn.Write(data)
+	if err != nil {
+		TLOG.Errorf("send pkg to %v failed %v", connSt.conn.RemoteAddr(), err)
+		return err
+	}
+	connSt.writeLock.Unlock()
+
+	TLOG.Infof("send data to %v", connSt.conn.RemoteAddr())
+	return err
 }
