@@ -17,7 +17,7 @@ var gAddServant = flag.Bool("add-servant", true, "Generate AddServant function")
 var gModuleCycle = flag.Bool("module-cycle", false, "support jce module cycle include(do not support jce file cycle include)")
 var gModuleUpper = flag.Bool("module-upper", false, "native module names are supported, otherwise the system will upper the first letter of the module name")
 var gJsonOmitEmpty = flag.Bool("json-omitempty", false, "Generate json emitempty support")
-var dispatchReporter = flag.Bool("dispatch-reporter", false, "Dispatch reporter support")
+var dispatchReporter = flag.Bool("dispatch-reporter", true, "Dispatch reporter support")
 
 var gFileMap map[string]bool
 
@@ -483,6 +483,10 @@ func (gen *GenGo) genStructDefine(st *StructInfo) {
 		if *gJsonOmitEmpty {
 			c.WriteString("\t" + v.Key + " " + gen.genType(v.Type) + " `json:\"" + v.OriginKey + ",omitempty\"`\n")
 		} else {
+			if v.Type.Type == tkTVector || v.Type.Type == tkTMap {
+				c.WriteString("\t" + v.Key + " " + gen.genType(v.Type) + " `json:\"" + v.OriginKey + ",omitempty\"`\n")
+				continue
+			}
 			c.WriteString("\t" + v.Key + " " + gen.genType(v.Type) + " `json:\"" + v.OriginKey + "\"`\n")
 		}
 	}
