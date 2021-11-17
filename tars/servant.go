@@ -2,8 +2,10 @@ package tars
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/TarsCloud/TarsGo/tars/protocol/codec"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -248,4 +250,54 @@ func (s *ServantProxy) doInvoke(ctx context.Context, msg *Message, timeout time.
 		TLOG.Debug("recv msg succ ", msg.Req.IRequestId)
 	}
 	return nil
+}
+
+// RequestPack is used for push
+func (s *ServantProxy) RequestPack(ctx context.Context, ctype byte,
+	sFuncName string,
+	buf []byte,
+	status map[string]string,
+	reqContext map[string]string) ([]byte, error) {
+	// 将ctx中的dyeinglog信息传入到request中
+	var msgType int32
+	dyeingKey, ok := current.GetDyeingKey(ctx)
+	if ok {
+		TLOG.Debug("dyeing debug: find dyeing key:", dyeingKey)
+		if status == nil {
+			status = make(map[string]string)
+		}
+		status[current.STATUS_DYED_KEY] = dyeingKey
+		msgType = basef.TARSMESSAGETYPEDYED
+	}
+
+	req := requestf.RequestPacket{
+		IVersion:     s.version,
+		CPacketType:  int8(ctype),
+		IRequestId:   s.genRequestID(),
+		SServantName: s.name,
+		SFuncName:    sFuncName,
+		SBuffer:      tools.ByteToInt8(buf),
+		//ITimeout:     s.comm.Client.ReqDefaultTimeout,
+		ITimeout:     int32(s.timeout),
+		Context:      reqContext,
+		Status:       status,
+		IMessageType: msgType,
+	}
+	return doRequestPack(&req)
+}
+func doRequestPack(req *requestf.RequestPacket) ([]byte, error) {
+	os := codec.NewBuffer()
+	err := os.Write_slice_int8(make([]int8, 4))
+	if err != nil {
+		return nil, err
+	}
+	err = req.WriteTo(os)
+	if err != nil {
+		return nil, err
+	}
+	bs := os.ToBytes()
+	l := len(bs)
+	binary.BigEndian.PutUint32(bs, uint32(l))
+	return bs, nil
+
 }
