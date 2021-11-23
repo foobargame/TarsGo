@@ -22,6 +22,7 @@ type RConf struct {
 	comm   *Communicator
 	tc     *configf.Config
 	path   string
+	setDivision string
 }
 
 // NewRConf init a Rconf, path should be getting from GetServerConfig().BasePath
@@ -29,9 +30,10 @@ func NewRConf(app string, server string, path string) *RConf {
 	comm := NewCommunicator()
 	tc := new(configf.Config)
 	obj := GetServerConfig().Config
+	setDivision := GetServerConfig().Setdivision
 
 	comm.StringToProxy(obj, tc)
-	return &RConf{app, server, comm, tc, path}
+	return &RConf{app, server, comm, tc, path, setDivision}
 }
 
 // GetConfigList is discarded.
