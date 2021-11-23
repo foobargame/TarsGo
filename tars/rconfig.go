@@ -41,6 +41,7 @@ func (c *RConf) GetConfigList() (flist []string, err error) {
 	info := configf.GetConfigListInfo{
 		Appname:    c.app,
 		Servername: c.server,
+		Setdivision: c.setDivision,
 		/*
 		   Host:string
 		   Setdivision:string
