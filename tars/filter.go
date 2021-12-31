@@ -21,6 +21,7 @@ type filters struct {
 
 var allFilters = filters{nil, nil, nil, nil, nil, nil, nil, nil}
 var dispatchReporter DispatchReporter
+var clientReporter ClientReporter
 
 // Invoke is used for Invoke tars server service
 type Invoke func(ctx context.Context, msg *Message, timeout time.Duration) (err error)
@@ -28,9 +29,17 @@ type Invoke func(ctx context.Context, msg *Message, timeout time.Duration) (err 
 // DispatchReporter is the reporter in server-side dispatch, and will be used in logging
 type DispatchReporter func(ctx context.Context, req []interface{}, rsp []interface{}, returns []interface{})
 
+// ClientReporter is the reporter in server-side dispatch, and will be used in logging
+type ClientReporter func(ctx context.Context, req []interface{}, rsp *requestf.ResponsePacket, returns []interface{})
+
 // RegisterDispatchReporter registers the server dispatch reporter
 func RegisterDispatchReporter(f DispatchReporter) {
 	dispatchReporter = f
+}
+
+// RegisterClientReporter registers the server dispatch reporter
+func RegisterClientReporter(f ClientReporter) {
+	clientReporter = f
 }
 
 // RegisterClientFilter  registers the Client filter , and will be executed in every request.
@@ -72,6 +81,11 @@ func UseClientFilterMiddleware(cfm ...ClientFilterMiddleware) {
 // GetDispatchReporter returns the dispatch reporter
 func GetDispatchReporter() DispatchReporter {
 	return dispatchReporter
+}
+
+// GetClientReporter returns the dispatch reporter
+func GetClientReporter() ClientReporter {
+	return clientReporter
 }
 
 func getMiddlewareClientFilter() ClientFilter {
