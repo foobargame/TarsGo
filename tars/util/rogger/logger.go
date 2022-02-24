@@ -282,7 +282,7 @@ func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{
             } else {
                 file = filepath.Base(file)
             }
-            fmt.Fprintf(buf, " %s:%d:%s|", file, line, getFuncName(runtime.FuncForPC(pc).Name()))
+            fmt.Fprintf(buf, " %s:%d %s|", file, line, getFuncName(runtime.FuncForPC(pc).Name()))
         }
         if colored && l.IsConsoleWriter() {
             buf.WriteString(level.coloredString())
