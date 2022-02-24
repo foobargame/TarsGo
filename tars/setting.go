@@ -11,7 +11,7 @@ const (
 	//for now ,some option should update from remote config
 
 	//TarsVersion is tars version
-	TarsVersion string = "1.1.2"
+	TarsVersion string = "1.1.9"
 
 	//server
 
@@ -32,6 +32,12 @@ const (
 
 	//client
 
+	// Stat default value
+	Stat = "tars.tarsstat.StatObj"
+	// Property default value
+	Property = "tars.tarsproperty.PropertyObj"
+	// ModuleName default value
+	ModuleName = "tup_client"
 	//ClientQueueLen client queue length
 	ClientQueueLen int = 10000
 	//ClientIdleTimeout client idle timeout,defaultvalue is 600000 milliseconds

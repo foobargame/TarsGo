@@ -58,6 +58,7 @@ func GetManager(comm *Communicator, objName string) EndpointManager {
 	g := gManager
 	g.mlock.Lock()
 	key := objName + comm.hashKey()
+
 	if v, ok := g.eps[key]; ok {
 		g.mlock.Unlock()
 		return v
@@ -127,7 +128,7 @@ func (g *globalManager) updateEndpoints() {
 		for _, e := range eps {
 			err := e.doFresh()
 			if err != nil {
-				TLOG.Errorf("update endoint error, %s.", e.objName)
+				TLOG.Errorf("update endpoint error, %s.", e.objName)
 			}
 
 		}
@@ -248,7 +249,7 @@ func (e *tarsEndpointManager) checkStatus() {
 				}
 				e.epLock.Unlock()
 
-				e.activeEpHashMap.Remove(ep.Key)
+				e.activeEpHashMap.Remove(ep)
 			}
 
 			if needCheck {
@@ -369,6 +370,7 @@ func (e *tarsEndpointManager) findAndSetObj(q *queryf.QueryF) error {
 	if setable, ok = e.comm.GetPropertyBool("enableset"); ok {
 		setID, _ = e.comm.GetProperty("setdivision")
 	}
+
 	if setable {
 		ret, err = q.FindObjectByIdInSameSet(e.objName, setID, &activeEp, &inactiveEp)
 	} else {
@@ -386,7 +388,7 @@ func (e *tarsEndpointManager) findAndSetObj(q *queryf.QueryF) error {
 
 	// compare, assert in same order
 	/*
-		if endpoint.IsEqaul(activeEp, &e.activeEpf) {
+		if endpoint.IsEqual(&activeEp, &e.activeEpf) {
 			TLOG.Debug("endpoint not change: ", e.objName)
 			return nil
 		}
@@ -441,7 +443,7 @@ func (e *tarsEndpointManager) findAndSetObj(q *queryf.QueryF) error {
 		}
 	}
 
-	//make endponit slice sorted
+	//make endpoint slice sorted
 	sort.Slice(sortedEps, func(i int, j int) bool {
 		return crc32.ChecksumIEEE([]byte(sortedEps[i].Key)) < crc32.ChecksumIEEE([]byte(sortedEps[j].Key))
 	})

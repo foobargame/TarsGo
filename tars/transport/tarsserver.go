@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"crypto/tls"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +27,7 @@ type TarsServerConf struct {
 	TCPReadBuffer  int
 	TCPWriteBuffer int
 	TCPNoDelay     bool
+	TlsConfig      *tls.Config
 }
 
 // TarsServer tars server struct.
