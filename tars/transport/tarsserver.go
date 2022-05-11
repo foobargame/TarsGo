@@ -36,7 +36,6 @@ type TarsServer struct {
 	conf       *TarsServerConf
 	handle     current.ServerHandler
 	lastInvoke time.Time
-	idleTime   time.Time
 	isClosed   int32
 	numInvoke  int32
 	numConn    int32
@@ -119,11 +118,9 @@ func (ts *TarsServer) invoke(ctx context.Context, pkg []byte) []byte {
 			rsp = ts.svr.Invoke(ctx, pkg)
 			cancelFunc()
 		}()
-		select {
-		case <-invokeDone.Done():
-			if len(rsp) == 0 { // The rsp must be none-empty
-				rsp = ts.svr.InvokeTimeout(pkg)
-			}
+		<-invokeDone.Done()
+		if len(rsp) == 0 { // The rsp must be none-empty
+			rsp = ts.svr.InvokeTimeout(pkg)
 		}
 	}
 	return rsp

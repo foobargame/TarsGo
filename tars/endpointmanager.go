@@ -20,7 +20,7 @@ import (
 	"github.com/TarsCloud/TarsGo/tars/util/gtime"
 )
 
-//EndpointManager interface of naming system
+// EndpointManager interface of naming system
 type EndpointManager interface {
 	SelectAdapterProxy(msg *Message) (*AdapterProxy, bool)
 	GetAllEndpoint() []*endpoint.Endpoint
@@ -53,7 +53,7 @@ func initOnceGManager(refreshInterval int, checkStatusInterval int) {
 
 // GetManager return a endpoint manager from global endpoint manager
 func GetManager(comm *Communicator, objName string) EndpointManager {
-	//taf
+	// tars
 	initOnceGManager(comm.Client.RefreshEndpointInterval, comm.Client.CheckStatusInterval)
 	g := gManager
 	g.mlock.Lock()
@@ -113,6 +113,7 @@ func (g *globalManager) checkEpStatus() {
 		}
 	}
 }
+
 func (g *globalManager) updateEndpoints() {
 	loop := time.NewTicker(time.Duration(g.refreshInterval) * time.Millisecond)
 	for range loop.C {
@@ -133,7 +134,7 @@ func (g *globalManager) updateEndpoints() {
 
 		}
 
-		//cache to file
+		// cache to file
 		cfg := GetServerConfig()
 		if cfg != nil && cfg.DataPath != "" {
 			cachePath := filepath.Join(cfg.DataPath, cfg.Server) + ".tarsdat"
@@ -155,7 +156,7 @@ func (g *globalManager) updateEndpoints() {
 // tarsEndpointManager is a struct which contains endpoint information.
 type tarsEndpointManager struct {
 	objName     string // name only, no ip list
-	directproxy bool
+	directProxy bool
 	comm        *Communicator
 	locator     *queryf.QueryF
 
@@ -165,7 +166,6 @@ type tarsEndpointManager struct {
 	pos         int32
 	activeEpf   []endpointf.EndpointF
 	inactiveEpf []endpointf.EndpointF
-	aliveCheck  chan endpointf.EndpointF
 
 	checkAdapterList *sync.Map
 	checkAdapter     chan *AdapterProxy
@@ -188,10 +188,10 @@ func newTarsEndpointManager(objName string, comm *Communicator) *tarsEndpointMan
 	e.checkAdapterList = &sync.Map{}
 	pos := strings.Index(objName, "@")
 	if pos > 0 {
-		//[direct]
+		// [direct]
 		e.objName = objName[0:pos]
 		endpoints := objName[pos+1:]
-		e.directproxy = true
+		e.directProxy = true
 		ends := strings.Split(endpoints, ":")
 		eps := make([]endpoint.Endpoint, len(ends))
 		for i, end := range ends {
@@ -205,10 +205,10 @@ func newTarsEndpointManager(objName string, comm *Communicator) *tarsEndpointMan
 		}
 		e.activeEpHashMap = chmap
 	} else {
-		//[proxy] TODO singleton
+		// [proxy] TODO singleton
 		TLOG.Debug("proxy mode:", objName)
 		e.objName = objName
-		e.directproxy = false
+		e.directProxy = false
 		obj, _ := e.comm.GetProperty("locator")
 		e.locator = new(queryf.QueryF)
 		TLOG.Debug("string to proxy locator ", obj)
@@ -230,11 +230,16 @@ func (e *tarsEndpointManager) GetAllEndpoint() []*endpoint.Endpoint {
 }
 
 func (e *tarsEndpointManager) checkStatus() {
-	//only in active epf need to check.
+	// only in active epf need to check.
 	for _, ef := range e.activeEpf {
 		ep := endpoint.Tars2endpoint(ef)
 		if v, ok := e.epList.Load(ep.Key); ok {
-			firstTime, needCheck := v.(*AdapterProxy).checkActive()
+			adp := v.(*AdapterProxy)
+			if e.comm.Client.KeepAliveInterval > 0 {
+				adp.doKeepAlive()
+			}
+
+			firstTime, needCheck := adp.checkActive()
 			if !firstTime && !needCheck {
 				continue
 			}
@@ -282,10 +287,10 @@ func (e *tarsEndpointManager) SelectAdapterProxy(msg *Message) (*AdapterProxy, b
 	eps := e.activeEp[:]
 	e.epLock.Unlock()
 
-	if e.directproxy && len(eps) == 0 {
+	if e.directProxy && len(eps) == 0 {
 		return nil, false
 	}
-	if !e.directproxy && len(e.activeEpf) == 0 {
+	if !e.directProxy && len(e.activeEpf) == 0 {
 		return nil, false
 	}
 	select {
@@ -303,7 +308,7 @@ func (e *tarsEndpointManager) SelectAdapterProxy(msg *Message) (*AdapterProxy, b
 				adp = v.(*AdapterProxy)
 			} else {
 				epf := endpoint.Endpoint2tars(ep)
-				adp = NewAdapterProxy(&epf, e.comm)
+				adp = NewAdapterProxy(e.objName, &epf, e.comm)
 				e.epList.Store(ep.Key, adp)
 			}
 		}
@@ -321,20 +326,20 @@ func (e *tarsEndpointManager) SelectAdapterProxy(msg *Message) (*AdapterProxy, b
 				adp = v.(*AdapterProxy)
 			} else {
 				epf := endpoint.Endpoint2tars(ep)
-				adp = NewAdapterProxy(&epf, e.comm)
+				adp = NewAdapterProxy(e.objName, &epf, e.comm)
 				e.epList.Store(ep.Key, adp)
 			}
 		}
 	}
-	if adp == nil && !e.directproxy {
-		//No any node is alive ,just select a random one.
+	if adp == nil && !e.directProxy {
+		// No any node is alive ,just select a random one.
 		randomIndex := rand.Intn(len(e.activeEpf))
 		randomEpf := e.activeEpf[randomIndex]
 		randomEp := endpoint.Tars2endpoint(randomEpf)
 		if v, ok := e.epList.Load(randomEp.Key); ok {
 			adp = v.(*AdapterProxy)
 		} else {
-			adp = NewAdapterProxy(&randomEpf, e.comm)
+			adp = NewAdapterProxy(e.objName, &randomEpf, e.comm)
 			e.epList.Store(randomEp.Key, adp)
 		}
 	}
@@ -342,7 +347,7 @@ func (e *tarsEndpointManager) SelectAdapterProxy(msg *Message) (*AdapterProxy, b
 }
 
 func (e *tarsEndpointManager) doFresh() error {
-	if e.directproxy {
+	if e.directProxy {
 		return nil
 	}
 	e.freshLock.Lock()
@@ -393,6 +398,7 @@ func (e *tarsEndpointManager) findAndSetObj(q *queryf.QueryF) error {
 			return nil
 		}
 	*/
+
 	if len(activeEp) == 0 {
 		TLOG.Errorf("findAndSetObj %s, empty of active endpoint", e.objName)
 		return nil
@@ -404,7 +410,7 @@ func (e *tarsEndpointManager) findAndSetObj(q *queryf.QueryF) error {
 		newEps[i] = endpoint.Tars2endpoint(ep)
 	}
 
-	//delete useless cache
+	// delete useless cache
 	e.epList.Range(func(key, value interface{}) bool {
 		flagActive := false
 		flagInactive := false
@@ -430,7 +436,7 @@ func (e *tarsEndpointManager) findAndSetObj(q *queryf.QueryF) error {
 		return true
 	})
 
-	//delete active endpoint which status is false
+	// delete active endpoint which status is false
 	sortedEps := make([]endpoint.Endpoint, 0)
 	for _, ep := range newEps {
 		if v, ok := e.epList.Load(ep.Key); ok {
@@ -443,7 +449,7 @@ func (e *tarsEndpointManager) findAndSetObj(q *queryf.QueryF) error {
 		}
 	}
 
-	//make endpoint slice sorted
+	// make endpoint slice sorted
 	sort.Slice(sortedEps, func(i int, j int) bool {
 		return crc32.ChecksumIEEE([]byte(sortedEps[i].Key)) < crc32.ChecksumIEEE([]byte(sortedEps[j].Key))
 	})

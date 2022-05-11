@@ -23,17 +23,17 @@ func (c *MyClient) Recv(pkg []byte) {
 // ParsePackage parse package from buff
 func (c *MyClient) ParsePackage(buff []byte) (pkgLen, status int) {
 	if len(buff) < 4 {
-		return 0, transport.PACKAGE_LESS
+		return 0, transport.PackageLess
 	}
 	length := binary.BigEndian.Uint32(buff[:4])
 
 	if length > 1048576000 || len(buff) > 1048576000 { // 1000MB
-		return 0, transport.PACKAGE_ERROR
+		return 0, transport.PackageError
 	}
 	if len(buff) < int(length) {
-		return 0, transport.PACKAGE_LESS
+		return 0, transport.PackageLess
 	}
-	return int(length), transport.PACKAGE_FULL
+	return int(length), transport.PackageFull
 }
 
 func getMsg(name string) []byte {
@@ -59,8 +59,7 @@ func main() {
 	count := 500
 	for i := 0; i < count; i++ {
 		msg := getMsg(name + strconv.Itoa(i))
-		err := client.Send(msg)
-		if err != nil {
+		if err := client.Send(msg); err != nil {
 			fmt.Println("send err: " + err.Error())
 		}
 	}

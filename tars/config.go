@@ -1,10 +1,10 @@
 package tars
 
 import (
-	"github.com/TarsCloud/TarsGo/tars/util/tools"
 	"time"
 
 	"github.com/TarsCloud/TarsGo/tars/util/endpoint"
+	"github.com/TarsCloud/TarsGo/tars/util/tools"
 )
 
 var svrCfg *serverConfig
@@ -51,21 +51,21 @@ type serverConfig struct {
 	Isdocker    bool
 	Enableset   bool
 	Setdivision string
-	//add server timeout
-	AcceptTimeout  time.Duration
-	ReadTimeout    time.Duration
-	WriteTimeout   time.Duration
-	HandleTimeout  time.Duration
-	IdleTimeout    time.Duration
-	ZombileTimeout time.Duration
-	QueueCap       int
-	//add tcp config
+	// add server timeout
+	AcceptTimeout time.Duration
+	ReadTimeout   time.Duration
+	WriteTimeout  time.Duration
+	HandleTimeout time.Duration
+	IdleTimeout   time.Duration
+	ZombieTimeout time.Duration
+	QueueCap      int
+	// add tcp config
 	TCPReadBuffer  int
 	TCPWriteBuffer int
 	TCPNoDelay     bool
-	//add routine number
+	// add routine number
 	MaxInvoke int32
-	//add adapter & report config
+	// add adapter & report config
 	PropertyReportInterval  time.Duration
 	StatReportInterval      time.Duration
 	MainLoopTicker          time.Duration
@@ -89,8 +89,9 @@ type clientConfig struct {
 	RefreshEndpointInterval int
 	ReportInterval          int
 	CheckStatusInterval     int
+	KeepAliveInterval       int
 	AsyncInvokeTimeout      int
-	//add client timeout
+	// add client timeout
 	ClientQueueLen         int
 	ClientIdleTimeout      time.Duration
 	ClientReadTimeout      time.Duration
@@ -111,7 +112,7 @@ func newServerConfig() *serverConfig {
 		LogSize:                 defaultRotateSizeMB,
 		LogNum:                  defaultRotateN,
 		LogLevel:                "INFO",
-		Version:                 TarsVersion,
+		Version:                 Version,
 		LocalIP:                 tools.GetLocalIP(),
 		Local:                   "",
 		BasePath:                "",
@@ -129,7 +130,7 @@ func newServerConfig() *serverConfig {
 		WriteTimeout:            tools.ParseTimeOut(ReadTimeout),
 		HandleTimeout:           tools.ParseTimeOut(HandleTimeout),
 		IdleTimeout:             tools.ParseTimeOut(IdleTimeout),
-		ZombileTimeout:          tools.ParseTimeOut(ZombileTimeout),
+		ZombieTimeout:           tools.ParseTimeOut(ZombieTimeout),
 		QueueCap:                QueueCap,
 		TCPReadBuffer:           TCPReadBuffer,
 		TCPWriteBuffer:          TCPWriteBuffer,
@@ -152,6 +153,7 @@ func newClientConfig() *clientConfig {
 		RefreshEndpointInterval: refreshEndpointInterval,
 		ReportInterval:          reportInterval,
 		CheckStatusInterval:     checkStatusInterval,
+		KeepAliveInterval:       keepAliveInterval,
 		AsyncInvokeTimeout:      AsyncInvokeTimeout,
 		ClientQueueLen:          ClientQueueLen,
 		ClientIdleTimeout:       tools.ParseTimeOut(ClientIdleTimeout),

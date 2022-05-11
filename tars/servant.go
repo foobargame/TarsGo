@@ -26,8 +26,8 @@ var (
 )
 
 const (
-	STAT_SUCCESS = iota
-	STAT_FAILED
+	StatSuccess = iota
+	StatFailed
 )
 
 // ServantProxy tars servant proxy instance
@@ -39,6 +39,8 @@ type ServantProxy struct {
 	version  int16
 	proto    model.Protocol
 	queueLen int32
+
+	pushCallback func([]byte)
 }
 
 // NewServantProxy creates and initializes a servant proxy
@@ -66,6 +68,11 @@ func newServantProxy(comm *Communicator, objName string) *ServantProxy {
 	s.timeout = s.comm.Client.AsyncInvokeTimeout
 	s.version = basef.TARSVERSION
 	return s
+}
+
+// Name is obj name
+func (s *ServantProxy) Name() string {
+	return s.name
 }
 
 // TarsSetTimeout sets the timeout for client calling the server , which is in ms.
@@ -96,8 +103,13 @@ func (s *ServantProxy) genRequestID() int32 {
 	}
 }
 
-// Tars_invoke is used for client inoking server.
-func (s *ServantProxy) Tars_invoke(ctx context.Context, ctype byte,
+// SetPushCallback set callback function for pushing
+func (s *ServantProxy) SetPushCallback(callback func([]byte)) {
+	s.pushCallback = callback
+}
+
+// TarsInvoke is used for client invoking server.
+func (s *ServantProxy) TarsInvoke(ctx context.Context, cType byte,
 	sFuncName string,
 	buf []byte,
 	status map[string]string,
@@ -105,7 +117,7 @@ func (s *ServantProxy) Tars_invoke(ctx context.Context, ctype byte,
 	resp *requestf.ResponsePacket) error {
 	defer CheckPanic()
 
-	// 将ctx中的dyeinglog信息传入到request中
+	// 将ctx中的dyeing信息传入到request中
 	var msgType int32
 	dyeingKey, ok := current.GetDyeingKey(ctx)
 	if ok {
@@ -113,18 +125,30 @@ func (s *ServantProxy) Tars_invoke(ctx context.Context, ctype byte,
 		if status == nil {
 			status = make(map[string]string)
 		}
-		status[current.STATUS_DYED_KEY] = dyeingKey
-		msgType = basef.TARSMESSAGETYPEDYED
+		status[current.StatusDyedKey] = dyeingKey
+		msgType |= basef.TARSMESSAGETYPEDYED
+	}
+
+	// 将ctx中的trace信息传入到request中
+	traceData, ok := current.GetTraceData(ctx)
+	if ok && traceData.TraceCall {
+		traceKey := traceData.GetTraceKeyFull(false)
+		TLOG.Debug("trace debug: find trace key:", traceKey)
+		if status == nil {
+			status = make(map[string]string)
+		}
+		status[current.StatusTraceKey] = traceKey
+		msgType |= basef.TARSMESSAGETYPETRACE
 	}
 
 	req := requestf.RequestPacket{
 		IVersion:     s.version,
-		CPacketType:  int8(ctype),
+		CPacketType:  int8(cType),
 		IRequestId:   s.genRequestID(),
 		SServantName: s.name,
 		SFuncName:    sFuncName,
 		SBuffer:      tools.ByteToInt8(buf),
-		//ITimeout:     s.comm.Client.ReqDefaultTimeout,
+		// ITimeout:     s.comm.Client.ReqDefaultTimeout,
 		ITimeout:     int32(s.timeout),
 		Context:      reqContext,
 		Status:       status,
@@ -175,17 +199,17 @@ func (s *ServantProxy) Tars_invoke(ctx context.Context, ctype byte,
 		msg.End()
 		TLOG.Errorf("Invoke error: %s, %s, %v, cost:%d", s.name, sFuncName, err.Error(), msg.Cost())
 		if msg.Resp == nil {
-			ReportStat(msg, STAT_SUCCESS, STAT_SUCCESS, STAT_FAILED)
+			ReportStat(msg, StatSuccess, StatSuccess, StatFailed)
 		} else if msg.Status == basef.TARSINVOKETIMEOUT {
-			ReportStat(msg, STAT_SUCCESS, STAT_FAILED, STAT_SUCCESS)
+			ReportStat(msg, StatSuccess, StatFailed, StatSuccess)
 		} else {
-			ReportStat(msg, STAT_SUCCESS, STAT_SUCCESS, STAT_FAILED)
+			ReportStat(msg, StatSuccess, StatSuccess, StatFailed)
 		}
 		return err
 	}
 	msg.End()
 	*resp = *msg.Resp
-	ReportStat(msg, STAT_FAILED, STAT_SUCCESS, STAT_SUCCESS)
+	ReportStat(msg, StatFailed, StatSuccess, StatSuccess)
 	return err
 }
 
@@ -202,6 +226,13 @@ func (s *ServantProxy) doInvoke(ctx context.Context, msg *Message, timeout time.
 	current.SetServerPortWithContext(ctx, fmt.Sprintf("%v", ep.Port))
 	msg.Adp = adp
 	adp.obj = s
+
+	if s.pushCallback != nil {
+		// auto keep alive for push client
+		go adp.onceKeepAlive.Do(adp.autoKeepAlive)
+		adp.pushCallback = s.pushCallback
+	}
+
 	atomic.AddInt32(&s.queueLen, 1)
 	readCh := make(chan *requestf.ResponsePacket)
 	adp.resp.Store(msg.Req.IRequestId, readCh)
@@ -247,7 +278,7 @@ func (s *ServantProxy) doInvoke(ctx context.Context, msg *Message, timeout time.
 		} else {
 			TLOG.Debug("recv nil Resp, close of the readCh?")
 		}
-		TLOG.Debug("recv msg succ ", msg.Req.IRequestId)
+		TLOG.Debug("recv msg success ", msg.Req.IRequestId)
 	}
 	return nil
 }

@@ -32,11 +32,13 @@ import (
 var tarsConfig map[string]*transport.TarsServerConf
 var goSvrs map[string]*transport.TarsServer
 var httpSvrs map[string]*http.Server
-var listenFds []*os.File
 var shutdown chan bool
 var serList []string
 var objRunList []string
 var isShudowning int32
+var clientObjInfo map[string]map[string]string
+var clientTlsConfig *tls.Config
+var clientObjTlsConfig map[string]*tls.Config
 
 // TLOG is the logger for tars framework.
 var TLOG = rogger.GetLogger("TLOG")
@@ -58,6 +60,8 @@ func init() {
 	httpSvrs = make(map[string]*http.Server)
 	shutdown = make(chan bool, 1)
 	adminMethods = make(map[string]adminFn)
+	clientObjInfo = make(map[string]map[string]string)
+	clientObjTlsConfig = make(map[string]*tls.Config)
 	rogger.SetLevel(rogger.ERROR)
 }
 
@@ -88,8 +92,8 @@ func initConfig() {
 		return
 	}
 
-	//Config.go
-	//init server config
+	// Config.go
+	// init server config
 	if strings.EqualFold(c.GetString("/tars/application<enableset>"), "Y") {
 		svrCfg.Enableset = true
 		svrCfg.Setdivision = c.GetString("/tars/application<setdivision>")
@@ -100,9 +104,9 @@ func initConfig() {
 	svrCfg.Server = sMap["server"]
 	svrCfg.LocalIP = sMap["localip"]
 	svrCfg.Local = c.GetString("/tars/application/server<local>")
-	//svrCfg.Container = c.GetString("/tars/application<container>")
+	// svrCfg.Container = c.GetString("/tars/application<container>")
 
-	//init log
+	// init log
 	svrCfg.LogPath = sMap["logpath"]
 	svrCfg.LogSize = tools.ParseLogSizeMb(sMap["logsize"])
 	svrCfg.LogNum = tools.ParseLogNum(sMap["lognum"])
@@ -113,9 +117,9 @@ func initConfig() {
 	svrCfg.DataPath = sMap["datapath"]
 	svrCfg.Log = sMap["log"]
 
-	//add version info
-	svrCfg.Version = TarsVersion
-	//add adapters config
+	// add version info
+	svrCfg.Version = Version
+	// add adapters config
 	svrCfg.Adapters = make(map[string]adapterConfig)
 
 	cachePath := filepath.Join(svrCfg.DataPath, svrCfg.Server) + ".tarsdat"
@@ -133,8 +137,8 @@ func initConfig() {
 		TLOG.SetFileRoller(svrCfg.LogPath+"/"+svrCfg.App+"/"+svrCfg.Server, 10, 100)
 	}
 
-	//cache
-	appCache.TarsVersion = TarsVersion
+	// cache
+	appCache.TarsVersion = Version
 
 	// add timeout config
 	svrCfg.AcceptTimeout = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/server<accepttimeout>", AcceptTimeout))
@@ -142,7 +146,7 @@ func initConfig() {
 	svrCfg.WriteTimeout = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/server<writetimeout>", WriteTimeout))
 	svrCfg.HandleTimeout = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/server<handletimeout>", HandleTimeout))
 	svrCfg.IdleTimeout = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/server<idletimeout>", IdleTimeout))
-	svrCfg.ZombileTimeout = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/server<zombiletimeout>", ZombileTimeout))
+	svrCfg.ZombieTimeout = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/server<zombietimeout>", ZombieTimeout))
 	svrCfg.QueueCap = c.GetIntWithDef("/tars/application/server<queuecap>", QueueCap)
 	svrCfg.GracedownTimeout = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/server<gracedowntimeout>", GracedownTimeout))
 
@@ -174,7 +178,7 @@ func initConfig() {
 		}
 	}
 
-	//init client config
+	// init client config
 	cMap := c.GetMap("/tars/application/client")
 	cltCfg.Locator = cMap["locator"]
 	cltCfg.Stat = cMap["stat"]
@@ -184,6 +188,7 @@ func initConfig() {
 	cltCfg.RefreshEndpointInterval = c.GetIntWithDef("/tars/application/client<refresh-endpoint-interval>", refreshEndpointInterval)
 	cltCfg.ReportInterval = c.GetIntWithDef("/tars/application/client<report-interval>", reportInterval)
 	cltCfg.CheckStatusInterval = c.GetIntWithDef("/tars/application/client<check-status-interval>", checkStatusInterval)
+	cltCfg.KeepAliveInterval = c.GetIntWithDef("/tars/application/client<keep-alive-interval>", keepAliveInterval)
 
 	// add client timeout
 	cltCfg.ClientQueueLen = c.GetIntWithDef("/tars/application/client<clientqueuelen>", ClientQueueLen)
@@ -195,29 +200,40 @@ func initConfig() {
 	cltCfg.ObjQueueMax = c.GetInt32WithDef("/tars/application/client<objqueuemax>", ObjQueueMax)
 	cltCfg.AdapterProxyTicker = tools.ParseTimeOut(c.GetIntWithDef("/tars/application/client<adapterproxyticker>", AdapterProxyTicker))
 	cltCfg.AdapterProxyResetCount = c.GetIntWithDef("/tars/application/client<adapterproxyresetcount>", AdapterProxyResetCount)
+	ca := c.GetString("/tars/application/client<ca>")
+	if ca != "" {
+		cert := c.GetString("/tars/application/client<cert>")
+		key := c.GetString("/tars/application/client<key>")
+		ciphers := c.GetString("/tars/application/client<ciphers>")
+		clientTlsConfig, err = ssl.NewClientTlsConfig(ca, cert, key, ciphers)
+		if err != nil {
+			panic(err)
+		}
+	}
 
 	serList = c.GetDomain("/tars/application/server")
 	for _, adapter := range serList {
 		endString := c.GetString("/tars/application/server/" + adapter + "<endpoint>")
 		end := endpoint.Parse(endString)
 		svrObj := c.GetString("/tars/application/server/" + adapter + "<servant>")
-		protocol := c.GetString("/tars/application/server/" + adapter + "<protocol>")
+		proto := c.GetString("/tars/application/server/" + adapter + "<protocol>")
+		queuecap := c.GetIntWithDef("/tars/application/server/"+adapter+"<queuecap>", svrCfg.QueueCap)
 		threads := c.GetInt("/tars/application/server/" + adapter + "<threads>")
-		svrCfg.Adapters[adapter] = adapterConfig{end, protocol, svrObj, threads}
+		svrCfg.Adapters[adapter] = adapterConfig{end, proto, svrObj, threads}
 		host := end.Host
 		if end.Bind != "" {
 			host = end.Bind
 		}
-		conf := &transport.TarsServerConf{
-			Proto:         end.Proto,
-			Address:       fmt.Sprintf("%s:%d", host, end.Port),
-			MaxInvoke:     svrCfg.MaxInvoke,
-			AcceptTimeout: svrCfg.AcceptTimeout,
-			ReadTimeout:   svrCfg.ReadTimeout,
-			WriteTimeout:  svrCfg.WriteTimeout,
-			HandleTimeout: svrCfg.HandleTimeout,
-			IdleTimeout:   svrCfg.IdleTimeout,
-
+		svrConf := &transport.TarsServerConf{
+			Proto:          end.Proto,
+			Address:        fmt.Sprintf("%s:%d", host, end.Port),
+			MaxInvoke:      svrCfg.MaxInvoke,
+			AcceptTimeout:  svrCfg.AcceptTimeout,
+			ReadTimeout:    svrCfg.ReadTimeout,
+			WriteTimeout:   svrCfg.WriteTimeout,
+			HandleTimeout:  svrCfg.HandleTimeout,
+			IdleTimeout:    svrCfg.IdleTimeout,
+			QueueCap:       queuecap,
 			TCPNoDelay:     svrCfg.TCPNoDelay,
 			TCPReadBuffer:  svrCfg.TCPReadBuffer,
 			TCPWriteBuffer: svrCfg.TCPWriteBuffer,
@@ -230,23 +246,23 @@ func initConfig() {
 				key := c.GetString("/tars/application/server/" + adapter + "<key>")
 				verifyClient := c.GetString("/tars/application/server/"+adapter+"<verifyclient>") != "0"
 				ciphers := c.GetString("/tars/application/server/" + adapter + "<ciphers>")
-				conf.TlsConfig, err = ssl.NewServerTlsConfig(ca, cert, key, verifyClient, ciphers)
+				svrConf.TlsConfig, err = ssl.NewServerTlsConfig(ca, cert, key, verifyClient, ciphers)
 				if err != nil {
 					panic(err)
 				}
 			} else {
-				conf.TlsConfig = tlsConfig
+				svrConf.TlsConfig = tlsConfig
 			}
 		}
-		tarsConfig[svrObj] = conf
+		tarsConfig[svrObj] = svrConf
 	}
 	TLOG.Debug("config add ", tarsConfig)
 
 	if len(svrCfg.Local) > 0 {
-		localpoint := endpoint.Parse(svrCfg.Local)
+		localPoint := endpoint.Parse(svrCfg.Local)
 		adminCfg := &transport.TarsServerConf{
 			Proto:          "tcp",
-			Address:        fmt.Sprintf("%s:%d", localpoint.Host, localpoint.Port),
+			Address:        fmt.Sprintf("%s:%d", localPoint.Host, localPoint.Port),
 			MaxInvoke:      svrCfg.MaxInvoke,
 			AcceptTimeout:  svrCfg.AcceptTimeout,
 			ReadTimeout:    svrCfg.ReadTimeout,
@@ -260,8 +276,29 @@ func initConfig() {
 		}
 
 		tarsConfig["AdminObj"] = adminCfg
-		svrCfg.Adapters["AdminAdapter"] = adapterConfig{localpoint, "tcp", "AdminObj", 1}
+		svrCfg.Adapters["AdminAdapter"] = adapterConfig{localPoint, "tcp", "AdminObj", 1}
 		RegisterAdmin(rogger.Admin, rogger.HandleDyeingAdmin)
+	}
+
+	auths := c.GetDomain("/tars/application/client")
+	for _, objName := range auths {
+		authInfo := make(map[string]string)
+		// authInfo["accesskey"] = c.GetString("/tars/application/client/" + objName + "<accesskey>")
+		// authInfo["secretkey"] = c.GetString("/tars/application/client/" + objName + "<secretkey>")
+		authInfo["ca"] = c.GetString("/tars/application/client/" + objName + "<ca>")
+		authInfo["cert"] = c.GetString("/tars/application/client/" + objName + "<cert>")
+		authInfo["key"] = c.GetString("/tars/application/client/" + objName + "<key>")
+		authInfo["ciphers"] = c.GetString("/tars/application/client/" + objName + "<ciphers>")
+		clientObjInfo[objName] = authInfo
+
+		if authInfo["ca"] != "" {
+			var objTlsConfig *tls.Config
+			objTlsConfig, err = ssl.NewClientTlsConfig(authInfo["ca"], authInfo["cert"], authInfo["key"], authInfo["ciphers"])
+			if err != nil {
+				panic(err)
+			}
+			clientObjTlsConfig[objName] = objTlsConfig
+		}
 	}
 }
 
@@ -323,7 +360,7 @@ func Run() {
 
 		s := goSvrs[obj]
 		if s == nil {
-			teerDown(fmt.Errorf("Obj not found %s", obj))
+			teerDown(fmt.Errorf("obj not found %s", obj))
 			break
 		}
 		TLOG.Debugf("Run %s  %+v", obj, s.GetConfig())
@@ -342,7 +379,7 @@ func Run() {
 			}
 		}(obj)
 	}
-	go ReportNotifyInfo(NOTIFY_NORMAL, "restart")
+	go ReportNotifyInfo(NotifyNormal, "restart")
 
 	lisDone.Wait()
 	if os.Getenv("GRACE_RESTART") == "1" {
@@ -352,7 +389,7 @@ func Run() {
 			grace.SignalUSR2(ppid)
 		}
 	}
-	mainloop()
+	mainLoop()
 }
 
 func graceRestart() {
@@ -382,10 +419,10 @@ func graceRestart() {
 		logfile = os.Stdout
 	}
 	files := []*os.File{os.Stdin, logfile, logfile}
-	for key, file := range grace.GetAllLisenFiles() {
+	for key, file := range grace.GetAllListenFiles() {
 		fd := fmt.Sprint(file.Fd())
 		newFd := len(files)
-		TLOG.Debugf("tranlate %s=%s to %s=%d", key, fd, key, newFd)
+		TLOG.Debugf("translate %s=%s to %s=%d", key, fd, key, newFd)
 		newEnvs = append(newEnvs, fmt.Sprintf("%s=%d", key, newFd))
 		files = append(files, file)
 	}
@@ -401,7 +438,7 @@ func graceRestart() {
 		Files: files,
 	})
 	if err != nil {
-		TLOG.Errorf("start supprocess failed %v", err)
+		TLOG.Errorf("start subprocess failed %v", err)
 		return
 	}
 	TLOG.Infof("subprocess start %d", process.Pid)
@@ -415,7 +452,7 @@ func graceShutdown() {
 	pid := os.Getpid()
 
 	var graceShutdownTimeout time.Duration
-	if atomic.LoadInt32(&isShutdownbyadmin) == 1 {
+	if atomic.LoadInt32(&isShutdownByAdmin) == 1 {
 		// shutdown by admin,we should need shorten the timeout
 		graceShutdownTimeout = tools.ParseTimeOut(GracedownTimeout)
 	} else {
@@ -480,7 +517,7 @@ func graceShutdown() {
 func teerDown(err error) {
 	shutdownOnce.Do(func() {
 		if err != nil {
-			ReportNotifyInfo(NOTIFY_NORMAL, "server is fatal: "+err.Error())
+			ReportNotifyInfo(NotifyNormal, "server is fatal: "+err.Error())
 			fmt.Println(err)
 			TLOG.Error(err)
 		}
@@ -493,7 +530,7 @@ func handleSignal() {
 	grace.GraceHandler(usrFun, killFunc)
 }
 
-func mainloop() {
+func mainLoop() {
 	ha := new(NodeFHelper)
 	comm := NewCommunicator()
 	node := GetServerConfig().Node
@@ -510,7 +547,7 @@ func mainloop() {
 	for {
 		select {
 		case <-shutdown:
-			ReportNotifyInfo(NOTIFY_NORMAL, "stop")
+			ReportNotifyInfo(NotifyNormal, "stop")
 			return
 		case <-loop.C:
 			if atomic.LoadInt32(&isShudowning) == 1 {
@@ -518,17 +555,16 @@ func mainloop() {
 			}
 			for name, adapter := range svrCfg.Adapters {
 				if adapter.Protocol == "not_tars" {
-					//TODO not_tars support
+					// TODO not_tars support
 					ha.KeepAlive(name)
 					continue
 				}
 				if s, ok := goSvrs[adapter.Obj]; ok {
-					if !s.IsZombie(GetServerConfig().ZombileTimeout) {
+					if !s.IsZombie(GetServerConfig().ZombieTimeout) {
 						ha.KeepAlive(name)
 					}
 				}
 			}
-
 		}
 	}
 }

@@ -2,21 +2,14 @@ package current
 
 import (
 	"context"
-	"errors"
+	"net"
+
+	"github.com/TarsCloud/TarsGo/tars/util/trace"
 )
 
 type tarsCurrentKey int64
 
 var tcKey = tarsCurrentKey(0x484900)
-
-// ServerHandler  is interface with listen and handler method
-type ServerHandler interface {
-	Listen() error
-	Handle() error
-	OnShutdown()
-	CloseIdles(n int64) bool
-	SendData(ctx context.Context, data []byte) error
-}
 
 // Current contains message for the specify request.
 // This current is used for server side.
@@ -31,8 +24,10 @@ type Current struct {
 	resContext  map[string]string
 	needDyeing  bool
 	dyeingUser  string
-	fd          uintptr
-	handle      ServerHandler
+	traceData   *trace.TraceData
+
+	rawConn net.Conn
+	udpAddr *net.UDPAddr
 }
 
 // NewCurrent return a Current point.
@@ -161,7 +156,7 @@ func GetRequestContext(ctx context.Context) (map[string]string, bool) {
 	return nil, ok
 }
 
-// GetRecvTsFromContext gets the recvTs from the context.
+// GetRecvPkgTsFromContext gets the recvTs from the context.
 func GetRecvPkgTsFromContext(ctx context.Context) (int64, bool) {
 	tc, ok := currentFromContext(ctx)
 	if ok {
@@ -170,7 +165,7 @@ func GetRecvPkgTsFromContext(ctx context.Context) (int64, bool) {
 	return 0, ok
 }
 
-// SetRecvTsFromContext set recv Ts to the tars current.
+// SetRecvPkgTsFromContext set recv Ts to the tars current.
 func SetRecvPkgTsFromContext(ctx context.Context, recvPkgTs int64) bool {
 	tc, ok := currentFromContext(ctx)
 	if ok {
@@ -222,14 +217,14 @@ func SetReqStatusValue(ctx context.Context, key string, value string) bool {
 	return ok
 }
 
-const STATUS_DYED_KEY = "STATUS_DYED_KEY"
+const StatusDyedKey = "STATUS_DYED_KEY"
 
 // GetDyeingKey gets dyeing key from the context.
 func GetDyeingKey(ctx context.Context) (string, bool) {
 	tc, ok := currentFromContext(ctx)
 	if ok {
 		if tc.reqStatus != nil {
-			if dyeingKey, exists := tc.reqStatus[STATUS_DYED_KEY]; exists {
+			if dyeingKey, exists := tc.reqStatus[StatusDyedKey]; exists {
 				return dyeingKey, true
 			}
 		}
@@ -245,7 +240,7 @@ func SetDyeingKey(ctx context.Context, dyeingKey string) bool {
 		if tc.reqStatus == nil {
 			tc.reqStatus = make(map[string]string)
 		}
-		tc.reqStatus[STATUS_DYED_KEY] = dyeingKey
+		tc.reqStatus[StatusDyedKey] = dyeingKey
 		tc.needDyeing = true
 	}
 	return ok
@@ -269,52 +264,72 @@ func SetDyeingUser(ctx context.Context, user string) bool {
 	return ok
 }
 
-// SetHandleWithContext set handle to the tars current.
-func SetHandleWithContext(ctx context.Context, handle ServerHandler) bool {
+const StatusTraceKey = "STATUS_TRACE_KEY"
+
+// TarsOpenTrace 开启trace
+func TarsOpenTrace(ctx context.Context, traceParams bool) bool {
 	tc, ok := currentFromContext(ctx)
 	if ok {
-		tc.handle = handle
+		traceData := trace.NewTraceData()
+		if traceParams {
+			traceData.OpenTrace(15, 0)
+		} else {
+			traceData.OpenTrace(0, 0)
+		}
+		tc.traceData = traceData
 	}
 	return ok
 }
 
-func GetHandleWithContext(ctx context.Context) (ServerHandler, bool) {
+// InitTrace init trace data from the trace key.
+func InitTrace(ctx context.Context, traceKey string) bool {
 	tc, ok := currentFromContext(ctx)
 	if ok {
-		return tc.handle, ok
-	}
-	return nil, ok
-}
-
-// SetHandleWithContext set fd to the tars current.
-func SetClientFdWithContext(ctx context.Context, fd uintptr) bool {
-	tc, ok := currentFromContext(ctx)
-	if ok {
-		tc.fd = fd
+		traceData := trace.NewTraceData()
+		if !traceData.InitTrace(traceKey) {
+			return false
+		}
+		traceData.TraceCall = true
+		tc.traceData = traceData
 	}
 	return ok
 }
 
-func GetClientFdWithContext(ctx context.Context) (uintptr, bool) {
+// GetTraceData get trace data from the context.
+func GetTraceData(ctx context.Context) (*trace.TraceData, bool) {
 	tc, ok := currentFromContext(ctx)
 	if ok {
-		return tc.fd, ok
+		if tc.traceData != nil {
+			return tc.traceData, true
+		}
 	}
-	return 0, ok
+	return nil, false
 }
 
-// SendResponse send data to client.
-func SendResponse(ctx context.Context, data []byte) error {
+// SetTraceData set trace data to the tars current.
+func SetTraceData(ctx context.Context, traceData *trace.TraceData) bool {
 	tc, ok := currentFromContext(ctx)
-	if !ok {
-		return errors.New("can't get current")
+	if ok {
+		tc.traceData = traceData
 	}
+	return ok
+}
 
-	if tc.handle == nil {
-		return errors.New("handle is nil")
+// GetRawConn get the raw tcp/udp connection from the context.
+func GetRawConn(ctx context.Context) (net.Conn, *net.UDPAddr, bool) {
+	tc, ok := currentFromContext(ctx)
+	if ok {
+		return tc.rawConn, tc.udpAddr, true
 	}
+	return nil, nil, false
+}
 
-	tc.handle.SendData(ctx, data)
-
-	return nil
+// SetUDPConnWithContext set tcp/udp connection to the tars current.
+func SetRawConnWithContext(ctx context.Context, conn net.Conn, udpAddr *net.UDPAddr) bool {
+	tc, ok := currentFromContext(ctx)
+	if ok {
+		tc.rawConn = conn
+		tc.udpAddr = udpAddr
+	}
+	return ok
 }

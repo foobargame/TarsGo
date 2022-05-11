@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"io"
 	"net"
@@ -21,18 +22,19 @@ type TarsClientConf struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	DialTimeout  time.Duration
+	TlsConfig    *tls.Config
 }
 
 // TarsClient is struct for tars client.
 type TarsClient struct {
 	address string
-	//TODO remove it
+	// TODO remove it
 	conn *connection
 
 	cp        ClientProtocol
 	conf      *TarsClientConf
 	sendQueue chan []byte
-	//recvQueue chan []byte
+	// recvQueue chan []byte
 }
 
 type connection struct {
@@ -84,12 +86,30 @@ func (tc *TarsClient) Send(req []byte) error {
 	return nil
 }
 
-// Close close the client connection with the server.
+// Close the client connection with the server.
 func (tc *TarsClient) Close() {
 	w := tc.conn
 	if !w.isClosed && w.conn != nil {
 		w.isClosed = true
 		w.conn.Close()
+	}
+}
+
+// GraceClose close client gracefully
+func (tc *TarsClient) GraceClose(ctx context.Context) {
+	tk := time.NewTicker(time.Millisecond * 500)
+	defer tk.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tk.C:
+			TLOG.Debugf("wait grace invoke %d", tc.conn.invokeNum)
+			if atomic.LoadInt32(&tc.conn.invokeNum) < 0 {
+				tc.Close()
+				return
+			}
+		}
 	}
 }
 
@@ -123,7 +143,7 @@ func (c *connection) send(conn net.Conn, connDone chan bool) {
 		c.idleTime = time.Now()
 		_, err := conn.Write(req)
 		if err != nil {
-			//TODO add retry time
+			// TODO add retry time
 			c.tc.sendQueue <- req
 			TLOG.Error("send request error:", err)
 			c.close(conn)
@@ -166,10 +186,10 @@ func (c *connection) recv(conn net.Conn, connDone chan bool) {
 		currBuffer = append(currBuffer, buffer[:n]...)
 		for {
 			pkgLen, status := c.tc.cp.ParsePackage(currBuffer)
-			if status == PACKAGE_LESS {
+			if status == PackageLess {
 				break
 			}
-			if status == PACKAGE_FULL {
+			if status == PackageFull {
 				atomic.AddInt32(&c.invokeNum, -1)
 				pkg := make([]byte, pkgLen)
 				copy(pkg, currBuffer[0:pkgLen])
@@ -191,8 +211,13 @@ func (c *connection) recv(conn net.Conn, connDone chan bool) {
 func (c *connection) ReConnect() (err error) {
 	c.connLock.Lock()
 	if c.isClosed {
-		TLOG.Debug("Connect:", c.tc.address)
-		c.conn, err = net.DialTimeout(c.tc.conf.Proto, c.tc.address, c.dialTimeout)
+		TLOG.Debug("Connect:", c.tc.address, "Proto:", c.tc.conf.Proto)
+		if c.tc.conf.Proto == "ssl" {
+			dialer := &net.Dialer{Timeout: c.dialTimeout}
+			c.conn, err = tls.DialWithDialer(dialer, "tcp", c.tc.address, c.tc.conf.TlsConfig)
+		} else {
+			c.conn, err = net.DialTimeout(c.tc.conf.Proto, c.tc.address, c.dialTimeout)
+		}
 
 		if err != nil {
 			c.connLock.Unlock()
@@ -220,22 +245,4 @@ func (c *connection) close(conn net.Conn) {
 		conn.Close()
 	}
 	c.connLock.Unlock()
-}
-
-// GraceClose close client gracefully
-func (c *TarsClient) GraceClose(ctx context.Context) {
-	tk := time.NewTicker(time.Millisecond * 500)
-	defer tk.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-tk.C:
-			TLOG.Debugf("wait grace invoke %d", c.conn.invokeNum)
-			if atomic.LoadInt32(&c.conn.invokeNum) < 0 {
-				c.Close()
-				return
-			}
-		}
-	}
 }

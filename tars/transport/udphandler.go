@@ -17,8 +17,7 @@ type udpHandler struct {
 	conf *TarsServerConf
 	ts   *TarsServer
 
-	conn      *net.UDPConn
-	numInvoke int32
+	conn *net.UDPConn
 }
 
 func (h *udpHandler) Listen() (err error) {
@@ -33,14 +32,12 @@ func (h *udpHandler) Listen() (err error) {
 
 func (h *udpHandler) Handle() error {
 	atomic.AddInt32(&h.ts.numConn, 1)
-	///wait invoke done
+	// wait invoke done
 	defer func() {
 		tick := time.NewTicker(time.Second)
 		defer tick.Stop()
 		for atomic.LoadInt32(&h.ts.numInvoke) > 0 {
-			select {
-			case <-tick.C:
-			}
+			<-tick.C
 		}
 		atomic.AddInt32(&h.ts.numConn, -1)
 	}()
@@ -68,6 +65,7 @@ func (h *udpHandler) Handle() error {
 			current.SetClientIPWithContext(ctx, udpAddr.IP.String())
 			current.SetClientPortWithContext(ctx, strconv.Itoa(udpAddr.Port))
 			current.SetRecvPkgTsFromContext(ctx, time.Now().UnixNano()/1e6)
+			current.SetRawConnWithContext(ctx, h.conn, udpAddr)
 
 			atomic.AddInt32(&h.ts.numInvoke, 1)
 			rsp := h.ts.invoke(ctx, pkg) // no need to check package
@@ -88,7 +86,6 @@ func (h *udpHandler) Handle() error {
 			atomic.AddInt32(&h.ts.numInvoke, -1)
 		}()
 	}
-	return nil
 }
 
 func (h *udpHandler) OnShutdown() {
