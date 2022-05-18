@@ -254,22 +254,22 @@ func (l *Logger) SetConsole() {
 
 // Debug logs interface in debug loglevel.
 func (l *Logger) Debug(v ...interface{}) {
-    l.Writef(0, DEBUG, "", v)
+    l.Writef(1, DEBUG, "", v)
 }
 
 // Info logs interface in Info loglevel.
 func (l *Logger) Info(v ...interface{}) {
-    l.Writef(0, INFO, "", v)
+    l.Writef(1, INFO, "", v)
 }
 
 // Warn logs interface in warning loglevel
 func (l *Logger) Warn(v ...interface{}) {
-    l.Writef(0, WARN, "", v)
+    l.Writef(1, WARN, "", v)
 }
 
 // Error logs interface in Error loglevel
 func (l *Logger) Error(v ...interface{}) {
-    l.Writef(0, ERROR, "", v)
+    l.Writef(1, ERROR, "", v)
 }
 
 // Trace log
@@ -287,22 +287,22 @@ func (l *Logger) Trace(msg string) {
 
 // Debugf logs interface in debug loglevel with formating string
 func (l *Logger) Debugf(format string, v ...interface{}) {
-    l.Writef(0, DEBUG, format, v)
+    l.Writef(1, DEBUG, format, v)
 }
 
 // Infof logs interface in Infof loglevel with formating string
 func (l *Logger) Infof(format string, v ...interface{}) {
-    l.Writef(0, INFO, format, v)
+    l.Writef(1, INFO, format, v)
 }
 
 // Warnf logs interface in warning loglevel with formating string
 func (l *Logger) Warnf(format string, v ...interface{}) {
-    l.Writef(0, WARN, format, v)
+    l.Writef(1, WARN, format, v)
 }
 
 // Errorf logs interface in Error loglevel with formating string
 func (l *Logger) Errorf(format string, v ...interface{}) {
-    l.Writef(0, ERROR, format, v)
+    l.Writef(1, ERROR, format, v)
 }
 
 func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{}) {
@@ -320,7 +320,7 @@ func (l *Logger) Writef(depth int, level LogLevel, format string, v []interface{
 func (l *Logger) WriteLineF(depth int, level LogLevel, format string, v []interface{}) *logValue {
     buf := bytes.NewBuffer(nil)
     if l.writer.NeedPrefix() {
-        fmt.Fprintf(buf, "%s|", time.Now().Format("2006-01-02 15:04:05.000"))
+        fmt.Fprintf(buf, "%s ", time.Now().Format("2006-01-02 15:04:05.000"))
 
         if callerFlag {
             pc, file, line, ok := runtime.Caller(depth + callerSkip)
@@ -330,7 +330,7 @@ func (l *Logger) WriteLineF(depth int, level LogLevel, format string, v []interf
             } else {
                 file = filepath.Base(file)
             }
-            fmt.Fprintf(buf, "%s:%s:%d|", file, getFuncName(runtime.FuncForPC(pc).Name()), line)
+            fmt.Fprintf(buf, " %s:%d %s ", file, line, getFuncName(runtime.FuncForPC(pc).Name()))
         }
         if colored && l.IsConsoleWriter() {
             buf.WriteString(level.coloredString())
