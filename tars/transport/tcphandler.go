@@ -107,7 +107,7 @@ func (h *tcpHandler) Handle() error {
     cfg := h.conf
     for {
         if atomic.LoadInt32(&h.ts.isClosed) == 1 {
-            TLOG.Errorf("Close accept %s %d", h.conf.Address, os.Getpid())
+            TLOG.Infof("Close accept %s %d", h.conf.Address, os.Getpid())
             atomic.StoreInt32(&h.isListenClosed, 1)
             break
         }

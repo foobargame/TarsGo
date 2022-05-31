@@ -356,7 +356,11 @@ func (l *Logger) WriteLineF(depth int, level LogLevel, format string, v []interf
     if l.writer.NeedPrefix() {
         buf.WriteByte('\n')
     }
-    return &logValue{value: buf.Bytes(), writer: l.writer}
+    bytes := buf.Bytes()
+    if l.hook != nil {
+        l.hook.After(level, string(bytes))
+    }
+    return &logValue{value: bytes, writer: l.writer}
 }
 
 func (l *Logger) WriteJsonF(depth int, level LogLevel, format string, v []interface{}) *logValue {
