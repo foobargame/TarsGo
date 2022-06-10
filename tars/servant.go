@@ -197,7 +197,7 @@ func (s *ServantProxy) TarsInvoke(ctx context.Context, cType byte,
 
     if err != nil {
         msg.End()
-        TLOG.Errorf("Invoke error: %s, %s, %v, cost:%d", s.name, sFuncName, err.Error(), msg.Cost())
+        TLOG.Warnf("Invoke error: %s, %s, %v, cost:%d", s.name, sFuncName, err.Error(), msg.Cost())
         if msg.Resp == nil {
             ReportStat(msg, StatSuccess, StatSuccess, StatFailed)
         } else if msg.Status == basef.TARSINVOKETIMEOUT {
