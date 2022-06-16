@@ -1220,6 +1220,7 @@ func (gen *GenGo) genIFProxyFun(interfName string, fun *FunInfo, withContext boo
     }
     // empty args and below separate
     c.WriteString("\n")
+    clientReportStr := clientRptString(fun.Args)
     errStr := errString(fun.HasRet)
 
     if !withContext {
@@ -1276,10 +1277,12 @@ resp := new(requestf.ResponsePacket)`)
     if isOneWay {
         c.WriteString(`
 		err = obj.servant.TarsInvoke(tarsCtx, 1, "` + fun.OriginName + `", buf.ToBytes(), statusMap, contextMap, resp)
+        ` + clientReportStr + `
 		` + errStr + `
 		`)
     } else {
         c.WriteString(`
+        ` + clientReportStr + `
 		err = obj.servant.TarsInvoke(tarsCtx, 0, "` + fun.OriginName + `", buf.ToBytes(), statusMap, contextMap, resp)
 		` + errStr + `
 		`)
@@ -1373,6 +1376,18 @@ if len(opts) == 1 {
     }
 
     c.WriteString("}" + "\n")
+}
+
+func clientRptString(args []ArgInfo) string {
+    _args := make([]string, len(args))
+    for i, arg := range args {
+        _args[i] = arg.Name
+    }
+    var inArgStr = strings.Join(_args, ",")
+    retArgStr := "ret, err"
+    return `if _dp_ := tars.GetClientReporter(); _dp_ != nil {
+			_dp_(tarsCtx, []interface{}{` + inArgStr + `}, resp, []interface{}{` + retArgStr + `})
+		}`
 }
 
 func (gen *GenGo) genArgs(arg *ArgInfo) {
