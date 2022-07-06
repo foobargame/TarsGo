@@ -1386,7 +1386,7 @@ func clientRptString(args []ArgInfo) string {
     var inArgStr = strings.Join(_args, ",")
     retArgStr := "ret, err"
     return `if _dp_ := tars.GetClientReporter(); _dp_ != nil {
-			_dp_(tarsCtx, []interface{}{` + inArgStr + `}, resp, []interface{}{` + retArgStr + `})
+			tarsCtx = _dp_(tarsCtx, obj.servant, []interface{}{` + inArgStr + `}, resp, []interface{}{` + retArgStr + `})
 		}`
 }
 
