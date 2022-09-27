@@ -111,7 +111,7 @@ func (c *AdapterProxy) Recv(pkg []byte) {
 				time.Now().UnixNano()/1e6, packet.IRequestId)
 		}
 	} else {
-		TLOG.Errorf("response timeout, req has been drop, now time :%v, RequestId:%v",
+		TLOG.Warnf("response timeout, req has been drop, now time :%v, RequestId:%v",
 			time.Now().UnixNano()/1e6, packet.IRequestId)
 	}
 }
