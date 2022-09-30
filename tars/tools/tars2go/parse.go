@@ -30,6 +30,7 @@ type StructMember struct {
     OriginKey string // original key
     Default   string
     DefType   TK
+    IsPointer bool
 }
 
 // StructMemberSorter When serializing, make sure the tags are ordered.
@@ -315,6 +316,9 @@ func (p *Parse) parseStructMember() *StructMember {
         p.parseErr("expect type")
     } else {
         m.Type = p.parseType()
+        if p.t != nil && p.t.S != nil {
+            m.IsPointer = p.t.S.P
+        }
     }
 
     // key

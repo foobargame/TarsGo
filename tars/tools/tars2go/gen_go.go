@@ -504,6 +504,9 @@ func (gen *GenGo) genStructDefine(st *StructInfo) {
             if v.Type.Type == tkTVector || v.Type.Type == tkTMap {
                 c.WriteString("\t" + v.Key + " " + gen.genType(v.Type) + " `json:\"" + v.OriginKey + ",omitempty\"`\n")
                 continue
+            } else if v.IsPointer {
+                c.WriteString("\t" + v.Key + " *" + gen.genType(v.Type) + " `json:\"" + v.OriginKey + ",omitempty\"`\n")
+                continue
             }
             c.WriteString("\t" + v.Key + " " + gen.genType(v.Type) + " `json:\"" + v.OriginKey + "\"`\n")
         }
@@ -609,6 +612,12 @@ for _, v := range ` + prefix + mb.Key + ` {
 func (gen *GenGo) genWriteStruct(mb *StructMember, prefix string, hasRet bool) {
     c := &gen.code
     tag := strconv.Itoa(int(mb.Tag))
+    var (
+        initState = fmt.Sprintf("if %s%s == nil {", prefix, mb.Key) + prefix + mb.Key + " = new(" + gen.genType(mb.Type) + ")}"
+    )
+    if mb.IsPointer {
+        c.WriteString(initState)
+    }
     c.WriteString(`
 err = ` + prefix + mb.Key + `.WriteBlock(buf, ` + tag + `)
 ` + errString(hasRet) + `
@@ -656,19 +665,37 @@ func (gen *GenGo) genWriteVar(v *StructMember, prefix string, hasRet bool) {
         gen.genWriteMap(v, prefix, hasRet)
     case tkName:
         if v.Type.CType == tkEnum {
+            var (
+                and       = "*"
+                initState = fmt.Sprintf("if %s%s == nil {", prefix, v.Key) + prefix + v.Key + " = new(" + gen.genType(v.Type) + ")}"
+            )
+            if v.IsPointer {
+                c.WriteString(initState)
+            } else {
+                and = ""
+            }
             // tkEnum enumeration processing
             tag := strconv.Itoa(int(v.Tag))
             c.WriteString(`
-err = buf.WriteInt32(int32(` + prefix + v.Key + `),` + tag + `)
+err = buf.WriteInt32(int32(` + and + prefix + v.Key + `),` + tag + `)
 ` + errString(hasRet) + `
 `)
         } else {
             gen.genWriteStruct(v, prefix, hasRet)
         }
     default:
+        var (
+            and       = "*"
+            initState = fmt.Sprintf("if %s%s == nil {", prefix, v.Key) + prefix + v.Key + " = new(" + gen.genType(v.Type) + ")}"
+        )
+        if v.IsPointer {
+            c.WriteString(initState)
+        } else {
+            and = ""
+        }
         tag := strconv.Itoa(int(v.Tag))
         c.WriteString(`
-err = buf.Write` + upperFirstLetter(gen.genType(v.Type)) + `(` + prefix + v.Key + `, ` + tag + `)
+err = buf.Write` + upperFirstLetter(gen.genType(v.Type)) + `(` + and + prefix + v.Key + `, ` + tag + `)
 ` + errString(hasRet) + `
 `)
     }
@@ -857,6 +884,12 @@ func (gen *GenGo) genReadStruct(mb *StructMember, prefix string, hasRet bool) {
     if mb.Require {
         require = "true"
     }
+    var (
+        initState = fmt.Sprintf("if %s%s == nil {", prefix, mb.Key) + prefix + mb.Key + " = new(" + gen.genType(mb.Type) + ")}"
+    )
+    if mb.IsPointer {
+        c.WriteString(initState)
+    }
     c.WriteString(`
 err = ` + prefix + mb.Key + `.ReadBlock(readBuf, ` + tag + `, ` + require + `)
 ` + errString(hasRet) + `
@@ -927,13 +960,22 @@ func (gen *GenGo) genReadVar(v *StructMember, prefix string, hasRet bool) {
         gen.genReadMap(v, prefix, hasRet)
     case tkName:
         if v.Type.CType == tkEnum {
+            var (
+                and       = ""
+                initState = prefix + v.Key + " = new(int32)"
+            )
+            if v.IsPointer {
+                c.WriteString(initState)
+            } else {
+                and = "&"
+            }
             tag := strconv.Itoa(int(v.Tag))
             require := "false"
             if v.Require {
                 require = "true"
             }
             c.WriteString(`
-err = readBuf.ReadInt32((*int32)(&` + prefix + v.Key + `),` + tag + `, ` + require + `)
+err = readBuf.ReadInt32((*int32)(` + and + prefix + v.Key + `),` + tag + `, ` + require + `)
 ` + errString(hasRet) + `
 `)
         } else {
@@ -945,8 +987,17 @@ err = readBuf.ReadInt32((*int32)(&` + prefix + v.Key + `),` + tag + `, ` + requi
         if v.Require {
             require = "true"
         }
+        var (
+            and       = ""
+            initState = prefix + v.Key + " = new(" + gen.genType(v.Type) + ")"
+        )
+        if v.IsPointer {
+            c.WriteString(initState)
+        } else {
+            and = "&"
+        }
         c.WriteString(`
-err = readBuf.Read` + upperFirstLetter(gen.genType(v.Type)) + `(&` + prefix + v.Key + `, ` + tag + `, ` + require + `)
+err = readBuf.Read` + upperFirstLetter(gen.genType(v.Type)) + `(` + and + prefix + v.Key + `, ` + tag + `, ` + require + `)
 ` + errString(hasRet) + `
 `)
     }
