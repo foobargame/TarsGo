@@ -507,6 +507,9 @@ func (gen *GenGo) genStructDefine(st *StructInfo) {
             } else if v.IsPointer {
                 c.WriteString("\t" + v.Key + " *" + gen.genType(v.Type) + " `json:\"" + v.OriginKey + ",omitempty\"`\n")
                 continue
+            } else if st.IsPointer {
+                c.WriteString("\t" + v.Key + " " + gen.genType(v.Type) + " `json:\"" + v.OriginKey + ",omitempty\"`\n")
+                continue
             }
             c.WriteString("\t" + v.Key + " " + gen.genType(v.Type) + " `json:\"" + v.OriginKey + "\"`\n")
         }

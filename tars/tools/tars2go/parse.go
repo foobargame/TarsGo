@@ -42,6 +42,7 @@ func (a StructMemberSorter) Less(i, j int) bool { return a[i].Tag < a[j].Tag }
 
 // StructInfo record struct information.
 type StructInfo struct {
+    IsPointer           bool
     Name                string
     OriginName          string //original name
     Mb                  []StructMember
@@ -369,6 +370,7 @@ func (p *Parse) parseStruct() {
     st := StructInfo{}
     p.expect(tkName)
     st.Name = p.t.S.S
+    st.IsPointer = p.t.S.P
     for _, v := range p.Struct {
         if v.Name == st.Name {
             p.parseErr(st.Name + " Redefine.")
