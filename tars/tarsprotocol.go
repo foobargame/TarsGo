@@ -106,7 +106,7 @@ func (s *Protocol) Invoke(ctx context.Context, req []byte) (rsp []byte) {
 			}
 		}
 		if err != nil {
-			TLOG.Errorf("RequestID:%d, Found err: %v", reqPackage.IRequestId, err)
+			TLOG.Infof("RequestID:%d, Found err: %v", reqPackage.IRequestId, err) // 一般是安全部门发来不明信息
 			rspPackage.IVersion = reqPackage.IVersion
 			rspPackage.CPacketType = basef.TARSNORMAL
 			rspPackage.IRequestId = reqPackage.IRequestId
